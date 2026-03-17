@@ -5,11 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
@@ -37,7 +39,6 @@ type gameResourceModel struct {
 	Name                    types.String            `tfsdk:"name"`
 	Description             types.String            `tfsdk:"description"`
 	BannerImagePath         types.String            `tfsdk:"banner_image_path"`
-	BannerImageHash         types.String            `tfsdk:"banner_image_hash"`
 	BannerImagePublicUrl    types.String            `tfsdk:"banner_image_public_url"`
 	BannerVerticalAlignment types.Int64             `tfsdk:"banner_vertical_alignment"`
 	Attributes              map[string]types.String `tfsdk:"attributes"`
@@ -46,6 +47,39 @@ type gameResourceModel struct {
 	Options                 *gameOptionsModel       `tfsdk:"options"`
 	Rules                   types.String            `tfsdk:"rules"`
 	Grid                    *gameGridModel          `tfsdk:"grid"`
+}
+
+const bannerImageHashKey = "banner_image_hash"
+
+// useStateForUnknownOrNullObject returns a plan modifier that uses the prior
+// state value when the planned value is unknown (i.e. Computed+Optional and
+// not set by the user). On create (no prior state), it resolves to null so
+// that Go struct pointers can represent the value as nil.
+func useStateForUnknownOrNullObject(attrTypes map[string]attr.Type) planmodifier.Object {
+	return unknownToNullObjectModifier{attrTypes: attrTypes}
+}
+
+type unknownToNullObjectModifier struct {
+	attrTypes map[string]attr.Type
+}
+
+func (m unknownToNullObjectModifier) Description(_ context.Context) string {
+	return "Use prior state for unknown values, or null on create."
+}
+
+func (m unknownToNullObjectModifier) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+
+func (m unknownToNullObjectModifier) PlanModifyObject(_ context.Context, req planmodifier.ObjectRequest, resp *planmodifier.ObjectResponse) {
+	if !req.PlanValue.IsUnknown() {
+		return
+	}
+	if !req.StateValue.IsNull() && !req.StateValue.IsUnknown() {
+		resp.PlanValue = req.StateValue
+		return
+	}
+	resp.PlanValue = types.ObjectNull(m.attrTypes)
 }
 
 func (r *gameResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -92,13 +126,6 @@ func (r *gameResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				MarkdownDescription: "Path to a local image file to use as the banner image. The file will be read and sent as a base64 data URL.",
 				Required:            true,
 			},
-			"banner_image_hash": schema.StringAttribute{
-				MarkdownDescription: "SHA-256 hash of the banner image file contents. Computed automatically; changes trigger a re-upload even if the path is unchanged.",
-				Computed:            true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
-			},
 			"banner_image_public_url": schema.StringAttribute{
 				MarkdownDescription: "The public URL of the banner image after upload.",
 				Computed:            true,
@@ -136,6 +163,12 @@ func (r *gameResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				MarkdownDescription: "Configuration options for how the game displays cards and other elements. Set via the update API (PUT /games/{id}).",
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers: []planmodifier.Object{
+					useStateForUnknownOrNullObject(map[string]attr.Type{
+						"card_display_mode":    types.StringType,
+						"card_display_context": types.StringType,
+					}),
+				},
 				Attributes: map[string]schema.Attribute{
 					"card_display_mode": schema.StringAttribute{
 						MarkdownDescription: "Controls how cards are displayed ('managed' or 'imageonly').",
@@ -264,7 +297,6 @@ func mapGameToResourceState(game *Game, state *gameResourceModel) {
 	state.Grid = mapGridFromAPI(game.GamePlayData)
 }
 
-
 // Create creates the resource and sets the initial Terraform state.
 func (r *gameResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan gameResourceModel
@@ -369,10 +401,11 @@ func (r *gameResource) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 
 	state := plan
-	state.BannerImageHash = types.StringValue(bannerHash)
 	mapGameToResourceState(readGameResp.JSON200, &state)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+	hashJSON, _ := json.Marshal(bannerHash)
+	resp.Diagnostics.Append(resp.Private.SetKey(ctx, bannerImageHashKey, hashJSON)...)
 }
 
 // Read refreshes the Terraform state with the latest data.
@@ -407,12 +440,10 @@ func (r *gameResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 
 	// Preserve fields the API doesn't return in the Game response
 	bannerImagePath := state.BannerImagePath
-	bannerImageHash := state.BannerImageHash
 	attrs := state.Attributes
 	rules := state.Rules
 	mapGameToResourceState(gameResp.JSON200, &state)
 	state.BannerImagePath = bannerImagePath
-	state.BannerImageHash = bannerImageHash
 	state.Attributes = attrs
 	state.Rules = rules
 
@@ -459,7 +490,17 @@ func (r *gameResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		resp.Diagnostics.AddError("Failed to hash banner image", err.Error())
 		return
 	}
-	if !plan.BannerImagePath.Equal(state.BannerImagePath) || newHash != state.BannerImageHash.ValueString() {
+	priorHashBytes, diags := req.Private.GetKey(ctx, bannerImageHashKey)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	var priorHash string
+	if priorHashBytes != nil {
+		_ = json.Unmarshal(priorHashBytes, &priorHash)
+	}
+
+	if !plan.BannerImagePath.Equal(state.BannerImagePath) || newHash != priorHash {
 		bannerDataURL, err := readImageAsDataURL(plan.BannerImagePath.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError("Failed to read banner image", err.Error())
@@ -504,10 +545,11 @@ func (r *gameResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	}
 
 	newState := plan
-	newState.BannerImageHash = types.StringValue(newHash)
 	mapGameToResourceState(readGameResp.JSON200, &newState)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &newState)...)
+	newHashJSON, _ := json.Marshal(newHash)
+	resp.Diagnostics.Append(resp.Private.SetKey(ctx, bannerImageHashKey, newHashJSON)...)
 }
 
 // Delete deletes the resource and removes the Terraform state on success.

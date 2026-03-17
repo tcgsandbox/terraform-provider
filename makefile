@@ -15,6 +15,9 @@ generate:
 fmt:
 	gofmt -s -w -e .
 
+apply-example:
+	terraform -chdir=examples/provider apply
+
 test:
 	go test -v -cover -timeout=120s -parallel=10 ./...
 

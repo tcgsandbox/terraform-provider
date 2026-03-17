@@ -12,6 +12,10 @@
 
 set -e
 
+# Change to project root so relative paths work
+PROJECT_DIR="$(git rev-parse --show-toplevel)"
+cd "$PROJECT_DIR"
+
 # Default to ~/projects/tcg-sandbox/openapi/api.yaml
 OPENAPI_SPEC="${1:-$HOME/projects/tcg-sandbox/openapi/api.yaml}"
 
