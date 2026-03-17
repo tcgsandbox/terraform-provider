@@ -17,7 +17,7 @@ PROJECT_DIR="$(git rev-parse --show-toplevel)"
 cd "$PROJECT_DIR"
 
 # Default to ~/projects/tcg-sandbox/openapi/api.yaml
-OPENAPI_SPEC="${1:-$HOME/projects/tcg-sandbox/openapi/api.yaml}"
+OPENAPI_SPEC="${1:-$PROJECT_DIR/docs/api/api-spec-copy.yaml}"
 
 # Validate the OpenAPI spec file exists
 if [ ! -f "$OPENAPI_SPEC" ]; then

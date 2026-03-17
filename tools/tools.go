@@ -7,6 +7,9 @@ package tools
 // to ensure the documentation is formatted properly.
 //go:generate terraform fmt -recursive ../examples/
 
+// Sync the OpenAPI spec locally.
+//go:generate sh ../scripts/sync-api-docs.sh
+
 // Generate client code.
 //go:generate sh ../scripts/generate-client.sh
 

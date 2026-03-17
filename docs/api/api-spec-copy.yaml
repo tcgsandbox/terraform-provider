@@ -1,0 +1,1560 @@
+openapi: 3.0.3
+info:
+  title: TCG Sandbox API
+  description: API for interacting with the TCG Sandbox.
+  version: 1.0.0
+paths:
+  /docs:
+    get:
+      summary: OpenAPI documentation
+      description: Returns the Swagger UI for the API.
+      responses:
+        '200':
+          description: OK
+          content:
+            text/html:
+              schema:
+                type: string
+  /openapi.yaml:
+    get:
+      summary: OpenAPI specification
+      description: Returns the raw OpenAPI YAML file.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/x-yaml:
+              schema:
+                type: string
+  /:
+    get:
+      summary: Get a welcome message.
+      responses:
+        '200':
+          description: Successful response with a welcome message.
+          content:
+            text/plain:
+              schema:
+                type: string
+  /pages:
+    get:
+      operationId: listPages
+      tags: [ Pages ]
+      summary: List all documentation pages as a directory tree.
+      description: Returns the page tree structure derived from the pages/ directory in GCS. Directories become sections and .md files become page entries.
+      responses:
+        '200':
+          description: Page tree retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageTree'
+  /pages/{page}:
+    get:
+      operationId: getPage
+      summary: Retrieve a page by its identifier.
+      parameters:
+        - name: page
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Page content retrieved successfully.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: Page not found.
+  /games:
+    get:
+      operationId: listGames
+      tags: [ Games ]
+      summary: List all games available across TCG Sandbox.
+      parameters:
+        - name: uid
+          in: query
+          description: Optional UID to filter games by owner.
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Games retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Game'
+    post:
+      operationId: createGame
+      tags: [ Games ]
+      summary: Create a new game - Authentication required.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                bannerImage:
+                  type: string
+                  description: data url string containing mime type and Base64 encoded image data.
+                bannerVerticalAlignment:
+                  type: integer
+                attributes:
+                  type: object
+                  additionalProperties:
+                    $ref: '#/components/schemas/GameAttributeType'
+                  description: A map of attribute names and their types.
+              required:
+                - name
+                - description
+                - bannerImage
+                - bannerVerticalAlignment
+                - attributes
+      responses:
+        '201':
+          description: Game created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Game'
+        '401':
+          description: Must be authenticated to create a game.
+  /games/{id}:
+    get:
+      operationId: getGameById
+      tags: [ Games ]
+      summary: Get details of a game by its ID.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Game details retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Game'
+        '400':
+          description: Invalid game ID provided.
+    put:
+      operationId: updateGame
+      tags: [ Games ]
+      summary: Update a game - Authentication required. All fields are optional; only provided fields are updated.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: The game's display name
+                description:
+                  type: string
+                bannerImage:
+                  type: string
+                  description: data url string containing mime type and Base64 encoded image data.
+                bannerVerticalAlignment:
+                  type: integer
+                options:
+                  $ref: '#/components/schemas/GameOptions'
+                  description: Configuration options for how the game displays cards and other elements.
+                gamePlayData:
+                  $ref: '#/components/schemas/GamePlayData'
+                  description: Grid configuration and player count. When provided, also sets playable to true.
+                rules:
+                  type: string
+                  description: Markdown content for game rules. Stored in GCS, not returned in GET responses.
+      responses:
+        '200':
+          description: Game updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Game'
+        '400':
+          description: Bad update
+        '403':
+          description: Not authorized to update game
+    delete:
+      operationId: deleteGame
+      tags: [ Games ]
+      summary: Delete a game and all associated data - Authentication required.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Game deletion processed successfully. The game will not exist after this call, whether or not it existed before.
+        '401':
+          description: Must be authenticated to delete a game.
+        '403':
+          description: Not authorized to delete this game.
+  /games/{gameId}/lore:
+    get:
+      operationId: listLorePosts
+      tags: [ Lore ]
+      summary: List all lore posts for a game, sorted by creation date descending.
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lore posts retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LorePost'
+        '404':
+          description: Game not found.
+    post:
+      operationId: createLorePost
+      tags: [ Lore ]
+      summary: Create a new lore post - Authentication required (game owner only).
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLorePostRequest'
+      responses:
+        '201':
+          description: Lore post created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LorePost'
+        '401':
+          description: Must be authenticated to create a lore post.
+        '403':
+          description: Not authorized to create lore posts for this game.
+        '404':
+          description: Game not found.
+  /games/{gameId}/lore/{postId}:
+    get:
+      operationId: getLorePost
+      tags: [ Lore ]
+      summary: Get a single lore post by ID.
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lore post retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LorePost'
+        '404':
+          description: Lore post not found.
+    put:
+      operationId: updateLorePost
+      tags: [ Lore ]
+      summary: Update a lore post - Authentication required (game owner only).
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateLorePostRequest'
+      responses:
+        '200':
+          description: Lore post updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LorePost'
+        '401':
+          description: Must be authenticated to update a lore post.
+        '403':
+          description: Not authorized to update lore posts for this game.
+        '404':
+          description: Lore post not found.
+    delete:
+      operationId: deleteLorePost
+      tags: [ Lore ]
+      summary: Delete a lore post - Authentication required (game owner only).
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: postId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lore post deletion processed successfully.
+        '401':
+          description: Must be authenticated to delete a lore post.
+        '403':
+          description: Not authorized to delete lore posts for this game.
+        '404':
+          description: Game not found.
+  /games/{gameId}/sets:
+    get:
+      operationId: listGameSets
+      tags: [ Game Sets ]
+      summary: List all game sets associated with this gameId.
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Game sets retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GameSet'
+    post:
+      operationId: createGameSet
+      tags: [ Game Sets ]
+      summary: Create a new game set - Authentication required.
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                setId:
+                  type: string
+                displayName:
+                  type: string
+                description:
+                    type: string
+                attributes:
+                  type: object
+                  additionalProperties:
+                    $ref: '#/components/schemas/GameAttributeType'
+                  description: A map of attribute names and their types.
+              required:
+                - setId
+                - displayName
+                - attributes
+      responses:
+        '201':
+          description: Game created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameSet'
+        '401':
+          description: Must be authenticated to create a game.
+  /games/{gameId}/sets/{setId}:
+    get:
+      operationId: getGameSetById
+      tags: [ Game Sets ]
+      summary: Get details of a game set
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: setId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Game set details retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameSet'
+        '404':
+          description: Game set not found
+    delete:
+      operationId: deleteGameSet
+      tags: [ Game Sets ]
+      summary: Delete a game set and all associated cards - Authentication required.
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: setId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Game set deletion processed successfully. The set will not exist after this call, whether or not it existed before.
+        '401':
+          description: Must be authenticated to delete a game set.
+        '403':
+          description: Not authorized to delete this game set.
+        '404':
+          description: Game not found.
+  /games/{gameId}/sets/{setId}/cards:
+    get:
+      operationId: listGameSetCards
+      tags: [ Cards ]
+      summary: List all cards associated with this setId.
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+              type: string
+        - name: setId
+          in: path
+          required: true
+          schema:
+              type: string
+      responses:
+        '200':
+          description: Cards retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Card'
+    post:
+      operationId: createCard
+      tags: [ Cards ]
+      summary: Create a new card in the specified set - Authentication required.
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: setId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                attributes:
+                  type: object
+                  additionalProperties: true
+                  description: A map of attribute names and their values.
+                cardImage:
+                  type: string
+                  description: data url string containing mime type and Base64 encoded image data.
+              required:
+                - name
+                - attributes
+      responses:
+        '201':
+          description: Card created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Card'
+        '400':
+          description: Invalid input.
+        '401':
+          description: Must be authenticated to create a card.
+
+  /games/{gameId}/sets/{setId}/cards/{cardId}:
+    get:
+      operationId: getCard
+      tags: [ Cards ]
+      summary: Retrieve a card by its ID.
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: setId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: cardId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Card retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Card'
+        '404':
+          description: Card not found.
+    delete:
+      operationId: deleteCard
+      tags: [ Cards ]
+      summary: Delete a card from a game set - Authentication required.
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: setId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: cardId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Card deletion processed successfully. The card will not exist after this call, whether or not it existed before.
+        '401':
+          description: Must be authenticated to delete a card.
+        '403':
+          description: Not authorized to delete this card.
+        '404':
+          description: Game, set, or user not found.
+  /users:
+    post:
+      operationId: createUser
+      tags: [ Users ]
+      summary: Create a new user - Authentication required.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserRequest'
+      responses:
+        '201':
+          description: User created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid user data provided.
+        '401':
+          description: Must be authenticated to create a user.
+        '409':
+          description: User already exists.
+  /users/{userId}:
+    get:
+      operationId: getUser
+      tags: [ Users ]
+      summary: Get a user by their ID - Authentication optional.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Must be authenticated to get user details.
+        '403':
+          description: Not authorized to access this user.
+        '404':
+          description: User not found.
+    put:
+      operationId: updateUser
+      tags: [ Users ]
+      summary: Update a user's display name - Authentication required.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRequest'
+      responses:
+        '200':
+          description: User updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid user data provided.
+        '401':
+          description: Must be authenticated to update a user.
+        '403':
+          description: Not authorized to update this user.
+        '404':
+          description: User not found.
+  /users/me/apikey:
+    post:
+      operationId: createApiKey
+      tags: [ Users ]
+      summary: Generate a new API key for the authenticated user - Authentication required.
+      parameters:
+        - name: expirationDays
+          in: query
+          required: false
+          description: Number of days until the API key expires (default 90).
+          schema:
+            type: integer
+            default: 90
+      responses:
+        '201':
+          description: API key created successfully. The plaintext key is returned only once.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apiKey:
+                    type: string
+                    description: The plaintext API key (format tcg_...). Store this securely - it will not be shown again.
+                  apiKeyData:
+                    $ref: '#/components/schemas/ApiKeyData'
+                required:
+                  - apiKey
+                  - apiKeyData
+        '401':
+          description: Must be authenticated to create an API key.
+        '500':
+          description: Failed to create API key.
+    get:
+      operationId: getApiKey
+      tags: [ Users ]
+      summary: Get API key metadata for the authenticated user - Authentication required.
+      responses:
+        '200':
+          description: API key metadata retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyData'
+        '401':
+          description: Must be authenticated to retrieve API key.
+        '404':
+          description: No API key found for this user.
+    delete:
+      operationId: deleteApiKey
+      tags: [ Users ]
+      summary: Revoke the API key for the authenticated user - Authentication required.
+      responses:
+        '200':
+          description: API key revoked successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  revokedAt:
+                    type: string
+                    format: date-time
+                required:
+                  - message
+                  - revokedAt
+        '401':
+          description: Must be authenticated to revoke API key.
+        '404':
+          description: No API key found for this user.
+  /users/{userId}/stars/{gameId}:
+    put:
+      operationId: starGame
+      tags: [ Users ]
+      summary: Star a game for a user - Authentication required.
+      description: Adds the game to the user's starred games list and increments the game's star count. This is a transactional operation.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Game starred successfully.
+        '401':
+          description: Must be authenticated to star a game.
+        '403':
+          description: Not authorized to star games for this user.
+        '404':
+          description: User or game not found.
+        '409':
+          description: Game is already starred by this user.
+    delete:
+      operationId: unstarGame
+      tags: [ Users ]
+      summary: Unstar a game for a user - Authentication required.
+      description: Removes the game from the user's starred games list and decrements the game's star count. This is a transactional operation.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Game unstarred successfully.
+        '401':
+          description: Must be authenticated to unstar a game.
+        '403':
+          description: Not authorized to unstar games for this user.
+        '404':
+          description: User or game not found, or game was not starred.
+  /lobbies:
+    post:
+      operationId: createLobby
+      tags: [ Lobbies ]
+      summary: Create a new lobby - Authentication required.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLobbyRequest'
+      responses:
+        '201':
+          description: Lobby created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameLobbyResponse'
+        '400':
+          description: Invalid lobby data provided.
+        '401':
+          description: Must be authenticated to create a lobby.
+        '403':
+          description: Not authorized to create this lobby.
+        '404':
+          description: Game or host not found.
+        '412':
+          description: Precondition failed - user has no decks for this game.
+    get:
+      operationId: listLobbies
+      tags: [ Lobbies ]
+      summary: List all lobbies
+      parameters:
+        - name: state
+          in: query
+          required: false
+          description: Filter lobbies by state (open, in_progress, closed, abandoned).
+          schema:
+            $ref: '#/components/schemas/GameLobbyState'
+        - name: gameId
+          in: query
+          required: false
+          description: Filter lobbies by game ID.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lobbies retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GameLobbyResponse'
+        '401':
+          description: Must be authenticated to list lobbies.
+  /lobbies/{id}:
+    get:
+      operationId: getLobbyById
+      tags: [ Lobbies ]
+      summary: Get details of a lobby by its ID.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lobby details retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameLobbyResponse'
+        '404':
+          description: Lobby not found.
+  /users/{userId}/decks:
+    get:
+      operationId: listUserDecks
+      tags: [ User Decks ]
+      summary: List all decks for a specific user - Authentication required.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: gameId
+          in: query
+          required: false
+          description: Filter decks by game ID. If not provided, returns all decks for the user.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User decks retrieved successfully.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserDeckSummary'
+        '401':
+          description: Must be authenticated to list user decks.
+        '403':
+          description: Not authorized to access this user's decks.
+    post:
+      operationId: createUserDeck
+      tags: [ User Decks ]
+      summary: Create a new deck for a user - Authentication required.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserDeckRequest'
+      responses:
+        '201':
+          description: Deck created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDeck'
+        '400':
+          description: Invalid deck data provided.
+        '401':
+          description: Must be authenticated to create a deck.
+        '403':
+          description: Not authorized to create decks for this user.
+  /users/{userId}/decks/{deckId}:
+    get:
+      operationId: getUserDeck
+      tags: [ User Decks ]
+      summary: Get details of a specific user deck - Authentication required.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deckId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deck details retrieved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDeck'
+        '401':
+          description: Must be authenticated to access deck details.
+        '403':
+          description: Not authorized to access this deck.
+        '404':
+          description: Deck not found.
+    put:
+      operationId: updateUserDeck
+      tags: [ User Decks ]
+      summary: Update a user deck - Authentication required.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deckId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserDeckRequest'
+      responses:
+        '200':
+          description: Deck updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDeck'
+        '400':
+          description: Invalid deck data provided.
+        '401':
+          description: Must be authenticated to update a deck.
+        '403':
+          description: Not authorized to update this deck.
+        '404':
+          description: Deck not found.
+    delete:
+      operationId: deleteUserDeck
+      tags: [ User Decks ]
+      summary: Delete a user deck - Authentication required.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: deckId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deck deletion processed successfully. The deck will not exist after this call, whether or not it existed before.
+        '401':
+          description: Must be authenticated to delete a deck.
+        '403':
+          description: Not authorized to delete this deck.
+        '404':
+          description: User not found.
+tags:
+  - name: Games
+    description: Endpoints related to game management.
+  - name: Game Sets
+    description: Endpoints related to game set management.
+  - name: Cards
+    description: Endpoints related to card management within game sets.
+  - name: Users
+    description: Endpoints for managing users.
+  - name: User Decks
+    description: Endpoints for managing user decks.
+  - name: Lore
+    description: Endpoints for managing game lore posts.
+  - name: Lobbies
+    description: Endpoints for managing game lobbies -- **API KEYS NOT SUPPORTED**.
+components:
+  schemas:
+    Metadata:
+      type: object
+      properties:
+        createdAt:
+          type: string
+          format: date-time
+          description: The timestamp when the object was created.
+        updatedAt:
+          type: string
+          format: date-time
+          description: The timestamp when the object was last updated.
+        cardCount:
+          type: integer
+          format: int64
+          description: The number of cards associated with this object.
+      required:
+        - createdAt
+        - updatedAt
+    ApiKeyData:
+      type: object
+      properties:
+        hash:
+          type: string
+          description: The SHA-256 hash of the API key.
+        createdAt:
+          type: string
+          format: date-time
+          description: The timestamp when the API key was created.
+        expiresAt:
+          type: string
+          format: date-time
+          description: The timestamp when the API key will expire.
+        partialKey:
+          type: string
+          description: A partial representation of the API key for display purposes (e.g., "tcg_abc...xyz").
+      required:
+        - hash
+        - createdAt
+        - expiresAt
+        - partialKey
+    Game:
+      type: object
+      properties:
+        id:
+          type: string
+        owner:
+          type: string
+          nullable: true
+          description: The user's unique ID.
+        name:
+          type: string
+        description:
+          type: string
+        bannerImagePublicUrl:
+          type: string
+          description: Path to card image in publicly visible managed folder of GCS.
+        bannerVerticalAlignment:
+          type: integer
+        playable:
+          type: boolean
+          description: Indicates whether the game is ready to be played (has sufficient content like cards, sets, etc.). This field is read-only and not included in POST/PUT requests.
+        gamePlayData:
+          $ref: '#/components/schemas/GamePlayData'
+          nullable: true
+          description: The grid configuration and player count settings for the game.
+        options:
+          $ref: '#/components/schemas/GameOptions'
+          nullable: true
+          description: Configuration options for how the game displays cards and other elements.
+        stats:
+          $ref: '#/components/schemas/GameStats'
+          nullable: true
+          description: Aggregate statistics for the game (e.g., star count).
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+      required:
+        - id
+        - name
+        - description
+        - bannerImagePublicUrl
+        - bannerVerticalAlignment
+        - playable
+        - metadata
+    GameSet:
+      type: object
+      properties:
+        id:
+          type: string
+        gameId:
+          type: string
+          description: The ID of the parent game this set belongs to.
+        name:
+          type: string
+        description:
+          type: string
+        attributes:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/GameAttributeType'
+          description: A map of attribute names and their types.
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+      required:
+        - id
+        - gameId
+        - name
+        - attributes
+        - metadata
+    GameAttributeType:
+      type: string
+      enum: [ 'string', 'number', 'boolean' ]
+      description: The types supported by game attributes.
+    GameLobbyState:
+      type: string
+      enum: [ 'open', 'in_progress', 'closed', 'abandoned' ]
+      description: The various states a game lobby can be in.
+    UserRole:
+      type: string
+      enum: [ 'basic', 'subscriber', 'admin' ]
+      description: The roles supported by the TCG Sandbox API.
+    SlotType:
+      type: string
+      enum: [ 'cards', 'counters' ]
+      description: The types of content a grid slot can hold.
+    SlotVisibility:
+      type: string
+      enum: [ 'private', 'public' ]
+      description: Whether a grid slot is visible to all players (public) or only to its owner (private).
+    Card:
+      type: object
+      properties:
+        id:
+          type: string
+        gameId:
+          type: string
+          description: The ID of the parent game this set belongs to.
+        setId:
+          type: string
+          description: The ID of the set this card belongs to.
+        name:
+          type: string
+        description:
+          type: string
+        attributes:
+          type: object
+          additionalProperties: true
+          description: A map of attribute names and their values.
+        cardImagePublicUrl:
+          type: string
+          description: Path to card image in publicly visible managed folder of GCS.
+      required:
+        - id
+        - gameId
+        - setId
+        - name
+        - attributes
+    GridSlot:
+      type: object
+      properties:
+        row:
+          type: integer
+          description: The row position of the slot in the grid (0-based index).
+          minimum: 0
+        column:
+          type: integer
+          description: The column position of the slot in the grid (0-based index).
+          minimum: 0
+        width:
+          type: integer
+          description: The width of the slot in grid units (how many columns it spans).
+          minimum: 1
+        height:
+          type: integer
+          description: The height of the slot in grid units (how many rows it spans).
+          minimum: 1
+        type:
+          $ref: '#/components/schemas/SlotType'
+        maxCount:
+          type: integer
+          description: The maximum number of items this slot can hold.
+          minimum: 1
+        visibility:
+          $ref: '#/components/schemas/SlotVisibility'
+        playerOwner:
+          type: integer
+          nullable: true
+          description: The player number (1-based) who owns this slot, or null if no player owns it.
+          minimum: 1
+      required:
+        - row
+        - column
+        - width
+        - height
+        - type
+        - maxCount
+        - visibility
+        - playerOwner
+    GamePlayData:
+      type: object
+      properties:
+        slots:
+          type: array
+          items:
+            $ref: '#/components/schemas/GridSlot'
+          description: Array of grid slots defining the game board layout.
+        playerCount:
+          type: integer
+          description: The current player count setting for the game.
+          minimum: 1
+          maximum: 4
+      required:
+        - slots
+        - playerCount
+    GameOptions:
+      type: object
+      properties:
+        cardDisplayMode:
+          $ref: '#/components/schemas/CardDisplayMode'
+        cardDisplayContext:
+          $ref: '#/components/schemas/CardDisplayContext'
+      description: Configuration options for how the game displays cards and other elements.
+    CardDisplayMode:
+      type: string
+      enum:
+        - managed
+        - imageonly
+      default: managed
+      description: |
+        Controls how cards are displayed in the game:
+        - managed: Full card with header and image
+        - imageonly: Only the card image with standard border/shadow
+    CardDisplayContext:
+      type: string
+      enum:
+        - everywhere
+        - ingameonly
+      default: everywhere
+      description: |
+        Controls where the display mode applies:
+        - everywhere: Applies to all card displays
+        - ingameonly: Only applies during gameplay (lobby/tabletop)
+    ComponentCard:
+      type: object
+      properties:
+        cardId:
+          type: string
+          description: The ID of the card from the game set.
+        setId:
+          type: string
+          description: The ID of the set this card belongs to.
+        quantity:
+          type: integer
+          description: The number of copies of this card in the deck.
+          minimum: 1
+      required:
+        - cardId
+        - setId
+        - quantity
+    UserDeck:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The unique identifier for the deck.
+        parentId:
+          type: string
+          description: The parent identifier for the deck.
+        displayName:
+          type: string
+          description: The display name for the deck.
+        gameId:
+          type: string
+          description: The ID of the game this deck belongs to.
+        componentCards:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComponentCard'
+          description: List of cards and their quantities in this deck.
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+      required:
+        - id
+        - parentId
+        - displayName
+        - gameId
+        - componentCards
+        - metadata
+    UserDeckSummary:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The unique identifier for the deck.
+        displayName:
+          type: string
+          description: The display name for the deck.
+        updatedAt:
+          type: string
+          format: date-time
+          description: The timestamp when the deck was last updated.
+      required:
+        - id
+        - displayName
+        - updatedAt
+    CreateUserDeckRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+          description: The display name for the deck.
+        gameId:
+          type: string
+          description: The ID of the game this deck belongs to.
+        componentCards:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComponentCard'
+          description: List of cards and their quantities in this deck.
+      required:
+        - displayName
+        - gameId
+        - componentCards
+    CreateUserRequest:
+      type: object
+      properties:
+        userId:
+          type: string
+          description: The unique ID for the user (typically from Firebase Auth).
+        email:
+          type: string
+          description: The user's email address.
+        displayName:
+          type: string
+          description: The user's display name.
+      required:
+        - userId
+        - email
+        - displayName
+    UpdateUserRequest:
+      type: object
+      properties:
+        displayName:
+          type: string
+          nullable: true
+          description: The user's display name. Set to null to clear the display name.
+      required:
+        - displayName
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The unique ID of the user.
+        email:
+          type: string
+          description: The user's email address.
+        role:
+          $ref: '#/components/schemas/UserRole'
+        displayName:
+          type: string
+          nullable: true
+          description: The user's display name.
+        starredGames:
+          type: array
+          items:
+            type: string
+          description: List of game IDs that the user has starred.
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+      required:
+        - id
+        - metadata
+    GameStats:
+      type: object
+      properties:
+        starCount:
+          type: integer
+          format: int64
+          description: The number of users who have starred this game.
+          default: 0
+      required:
+        - starCount
+    CreateLobbyRequest:
+      type: object
+      properties:
+        gameId:
+          type: string
+          description: The ID of the game this lobby is for.
+        host:
+          type: string
+          description: The user ID of the host creating the lobby.
+      required:
+        - gameId
+        - host
+    GameLobbyResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The ID of the lobby.
+        gameId:
+          type: string
+          description: The ID of the game this lobby is for.
+        host:
+          type: string
+          description: The ID of the host creating the lobby.
+        players:
+          type: array
+          items:
+            type: string
+          description: List of player IDs currently in the lobby.
+        playerDecks:
+          type: object
+          additionalProperties:
+            type: string
+          description: Map of player IDs to their selected deck IDs for players who have joined with a deck.
+        state:
+          $ref: '#/components/schemas/GameLobbyState'
+        expireAt:
+          type: string
+          format: date-time
+          description: The timestamp when the lobby will expire and be automatically cleaned up.
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+      required:
+        - id
+        - gameId
+        - host
+        - players
+        - playerDecks
+        - state
+        - expireAt
+    LorePost:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The unique identifier for the lore post.
+        gameId:
+          type: string
+          description: The ID of the game this lore post belongs to.
+        title:
+          type: string
+          description: The title of the lore post.
+        gcsPath:
+          type: string
+          description: The GCS path to the markdown content file.
+        metadata:
+          $ref: '#/components/schemas/Metadata'
+      required:
+        - id
+        - gameId
+        - title
+        - gcsPath
+        - metadata
+    CreateLorePostRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          description: The title of the lore post.
+        content:
+          type: string
+          description: The markdown content of the lore post.
+      required:
+        - title
+        - content
+    UpdateLorePostRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          description: The updated title of the lore post.
+        content:
+          type: string
+          description: The updated markdown content of the lore post.
+    PageTreeEntry:
+      type: object
+      description: A single documentation page entry.
+      properties:
+        name:
+          type: string
+          description: Display name derived from the filename (hyphens replaced with spaces, title-cased).
+        path:
+          type: string
+          description: URL-relative path segment for navigation (e.g., "about" or "guides/creating-a-game").
+      required:
+        - name
+        - path
+    PageTreeSection:
+      type: object
+      description: A directory containing documentation pages.
+      properties:
+        name:
+          type: string
+          description: Display name of the directory (hyphens replaced with spaces, title-cased).
+        slug:
+          type: string
+          description: The raw directory name used in URL paths (e.g., "guides").
+        pages:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageTreeEntry'
+      required:
+        - name
+        - slug
+        - pages
+    PageTree:
+      type: object
+      description: The full page directory tree with root-level pages and nested sections.
+      properties:
+        rootPages:
+          type: array
+          description: Pages at the root level of the pages/ directory.
+          items:
+            $ref: '#/components/schemas/PageTreeEntry'
+        sections:
+          type: array
+          description: Subdirectories, each containing their child pages.
+          items:
+            $ref: '#/components/schemas/PageTreeSection'
+      required:
+        - rootPages
+        - sections
