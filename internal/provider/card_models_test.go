@@ -83,8 +83,8 @@ func TestMapCardToState_NonStringAttributeValues(t *testing.T) {
 		SetId:  "set-1",
 		Name:   "Test Card",
 		Attributes: map[string]interface{}{
-			"str_val": "hello",
-			"num_val": float64(42),
+			"str_val":  "hello",
+			"num_val":  float64(42),
 			"bool_val": true,
 		},
 	}

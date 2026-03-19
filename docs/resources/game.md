@@ -25,9 +25,9 @@ Manages a game in TCG Sandbox.
 
 ### Optional
 
-- `grid` (Attributes) The grid configuration and player count settings for the game board layout. (see [below for nested schema](#nestedatt--grid))
-- `options` (Attributes) Configuration options for how the game displays cards and other elements. Set via the update API (PUT /games/{id}). (see [below for nested schema](#nestedatt--options))
-- `rules` (String) Markdown content for the game rules.
+- `grid` (Block, Optional) The grid configuration and player count settings for the game board layout. (see [below for nested schema](#nestedblock--grid))
+- `options` (Block, Optional) Configuration options for how the game displays cards and other elements. (see [below for nested schema](#nestedblock--options))
+- `rules` (Block, Optional) Game rules in markdown format. (see [below for nested schema](#nestedblock--rules))
 
 ### Read-Only
 
@@ -36,10 +36,10 @@ Manages a game in TCG Sandbox.
 - `owner` (String) The user ID of the game owner.
 - `playable` (Boolean) Whether the game is ready to be played.
 
-<a id="nestedatt--grid"></a>
+<a id="nestedblock--grid"></a>
 ### Nested Schema for `grid`
 
-Required:
+Optional:
 
 - `player_count` (Number) The number of players for the game (1-4).
 - `slots` (Attributes List) Array of grid slots defining the game board layout. (see [below for nested schema](#nestedatt--grid--slots))
@@ -63,10 +63,18 @@ Optional:
 
 
 
-<a id="nestedatt--options"></a>
+<a id="nestedblock--options"></a>
 ### Nested Schema for `options`
 
 Optional:
 
 - `card_display_context` (String) Controls where the display mode applies ('everywhere' or 'ingameonly').
 - `card_display_mode` (String) Controls how cards are displayed ('managed' or 'imageonly').
+
+
+<a id="nestedblock--rules"></a>
+### Nested Schema for `rules`
+
+Optional:
+
+- `content` (String) Markdown content for the game rules.

@@ -19,7 +19,10 @@ Fetches a single card from a game set in TCG Sandbox.
 
 - `game_id` (String) The ID of the parent game.
 - `id` (String) The unique identifier of the card.
-- `set_id` (String) The ID of the set this card belongs to.
+
+### Optional
+
+- `set_id` (String) The ID of the set this card belongs to. Defaults to "base".
 
 ### Read-Only
 

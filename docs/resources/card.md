@@ -20,12 +20,12 @@ Manages a card in a game set in TCG Sandbox.
 - `attributes` (Map of String) A map of attribute names to their values.
 - `game_id` (String) The ID of the parent game.
 - `name` (String) The name of the card.
-- `set_id` (String) The ID of the set this card belongs to.
 
 ### Optional
 
 - `card_image_path` (String) Path to a local image file to use as the card image. The file will be read and sent as a base64 data URL.
 - `description` (String) The description of the card.
+- `set_id` (String) The ID of the set this card belongs to. Defaults to "base".
 
 ### Read-Only
 

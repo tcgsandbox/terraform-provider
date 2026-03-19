@@ -12,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -48,42 +47,11 @@ type gameResourceModel struct {
 	Owner                   types.String            `tfsdk:"owner"`
 	Playable                types.Bool              `tfsdk:"playable"`
 	Options                 *gameOptionsModel       `tfsdk:"options"`
-	Rules                   types.String            `tfsdk:"rules"`
+	Rules                   *gameRulesModel         `tfsdk:"rules"`
 	Grid                    *gameGridModel          `tfsdk:"grid"`
 }
 
 const bannerImageHashKey = "banner_image_hash"
-
-// useStateForUnknownOrNullObject returns a plan modifier that uses the prior
-// state value when the planned value is unknown (i.e. Computed+Optional and
-// not set by the user). On create (no prior state), it resolves to null so
-// that Go struct pointers can represent the value as nil.
-func useStateForUnknownOrNullObject(attrTypes map[string]attr.Type) planmodifier.Object {
-	return unknownToNullObjectModifier{attrTypes: attrTypes}
-}
-
-type unknownToNullObjectModifier struct {
-	attrTypes map[string]attr.Type
-}
-
-func (m unknownToNullObjectModifier) Description(_ context.Context) string {
-	return "Use prior state for unknown values, or null on create."
-}
-
-func (m unknownToNullObjectModifier) MarkdownDescription(ctx context.Context) string {
-	return m.Description(ctx)
-}
-
-func (m unknownToNullObjectModifier) PlanModifyObject(_ context.Context, req planmodifier.ObjectRequest, resp *planmodifier.ObjectResponse) {
-	if !req.PlanValue.IsUnknown() {
-		return
-	}
-	if !req.StateValue.IsNull() && !req.StateValue.IsUnknown() {
-		resp.PlanValue = req.StateValue
-		return
-	}
-	resp.PlanValue = types.ObjectNull(m.attrTypes)
-}
 
 func (r *gameResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
@@ -162,16 +130,10 @@ func (r *gameResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 					boolplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"options": schema.SingleNestedAttribute{
-				MarkdownDescription: "Configuration options for how the game displays cards and other elements. Set via the update API (PUT /games/{id}).",
-				Optional:            true,
-				Computed:            true,
-				PlanModifiers: []planmodifier.Object{
-					useStateForUnknownOrNullObject(map[string]attr.Type{
-						"card_display_mode":    types.StringType,
-						"card_display_context": types.StringType,
-					}),
-				},
+		},
+		Blocks: map[string]schema.Block{
+			"options": schema.SingleNestedBlock{
+				MarkdownDescription: "Configuration options for how the game displays cards and other elements.",
 				Attributes: map[string]schema.Attribute{
 					"card_display_mode": schema.StringAttribute{
 						MarkdownDescription: "Controls how cards are displayed ('managed' or 'imageonly').",
@@ -191,21 +153,25 @@ func (r *gameResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 					},
 				},
 			},
-			"rules": schema.StringAttribute{
-				MarkdownDescription: "Markdown content for the game rules.",
-				Optional:            true,
+			"rules": schema.SingleNestedBlock{
+				MarkdownDescription: "Game rules in markdown format.",
+				Attributes: map[string]schema.Attribute{
+					"content": schema.StringAttribute{
+						MarkdownDescription: "Markdown content for the game rules.",
+						Optional:            true,
+					},
+				},
 			},
-			"grid": schema.SingleNestedAttribute{
+			"grid": schema.SingleNestedBlock{
 				MarkdownDescription: "The grid configuration and player count settings for the game board layout.",
-				Optional:            true,
 				Attributes: map[string]schema.Attribute{
 					"player_count": schema.Int64Attribute{
 						MarkdownDescription: "The number of players for the game (1-4).",
-						Required:            true,
+						Optional:            true,
 					},
 					"slots": schema.ListNestedAttribute{
 						MarkdownDescription: "Array of grid slots defining the game board layout.",
-						Required:            true,
+						Optional:            true,
 						NestedObject: schema.NestedAttributeObject{
 							Attributes: map[string]schema.Attribute{
 								"row": schema.Int64Attribute{
@@ -364,8 +330,8 @@ func (r *gameResource) Create(ctx context.Context, req resource.CreateRequest, r
 		updateBody.Options = newGameOptions(plan.Options)
 		needsUpdate = true
 	}
-	if !plan.Rules.IsNull() && !plan.Rules.IsUnknown() {
-		rules := plan.Rules.ValueString()
+	if plan.Rules != nil {
+		rules := plan.Rules.Content.ValueString()
 		updateBody.Rules = &rules
 		needsUpdate = true
 	}
@@ -481,7 +447,7 @@ func (r *gameResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		if rulesResp.StatusCode == http.StatusOK {
 			body, err := io.ReadAll(rulesResp.Body)
 			if err == nil {
-				state.Rules = types.StringValue(string(body))
+				state.Rules = &gameRulesModel{Content: types.StringValue(string(body))}
 			}
 		}
 	}
@@ -514,8 +480,8 @@ func (r *gameResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		body.Options = newGameOptions(plan.Options)
 	}
 
-	if !plan.Rules.IsNull() && !plan.Rules.IsUnknown() {
-		rules := plan.Rules.ValueString()
+	if plan.Rules != nil {
+		rules := plan.Rules.Content.ValueString()
 		body.Rules = &rules
 	}
 
