@@ -1,3 +1,8 @@
+---
+name: sync-provider
+description: Sync the Terraform provider with the latest API changes. Analyze the generated client for new or modified endpoints, then implement missing resources and data sources in parallel. Use this skill when the user runs /sync-provider, asks to sync or update the provider with API changes, or wants to implement missing or changed Terraform resources/data sources.
+---
+
 Sync the Terraform provider with the latest API changes. Analyze the generated client for new or modified endpoints, then implement missing resources and data sources in parallel.
 
 ## 1. Analyze
