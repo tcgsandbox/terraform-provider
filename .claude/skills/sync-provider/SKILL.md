@@ -20,6 +20,8 @@ Parse the output for two categories of work:
 
 If there are no changes and no missing entities, report "Provider is up to date" and stop.
 
+**Filtering:** Skip entities that only have a `List` operation and no `Get`/`Create`/`Delete` — these are not meaningful Terraform resources or data sources and should be excluded from implementation.
+
 ## 2. Build work items
 
 For each entity needing work, read `internal/provider/client_generated.go` and extract:
@@ -43,6 +45,9 @@ You are implementing a Terraform provider entity. Read these reference files fir
 - internal/provider/game_resource.go (resource pattern)
 - internal/provider/game_data_source.go (data source pattern)
 - internal/provider/game_models.go (shared models pattern)
+- internal/provider/game_models_test.go (unit test pattern for pure mapper functions)
+- internal/provider/game_resource_test.go (acceptance test pattern for resources)
+- internal/provider/game_data_source_test.go (acceptance test pattern for data sources)
 - CLAUDE.md (project conventions)
 
 Then read the generated client types for your entity from internal/provider/client_generated.go.
@@ -78,6 +83,25 @@ Relevant generated types (verify these by reading client_generated.go):
    - `new{Entity}()` functions (Terraform → API)
    - Use `optionalString()` from game_models.go for nullable string pointers
 
+4. **Unit tests** (`internal/provider/{ENTITY_SNAKE}_models_test.go`) — create for EVERY entity that has a models file with pure mapper functions. Follow the pattern in `game_models_test.go`:
+   - Test each mapper function with: all fields populated, nil/optional fields, edge cases (empty maps, type coercion)
+   - Use `t.Parallel()` on every test
+   - Use simple `Test{FuncName}_{Scenario}` naming
+   - No mocking — these are pure data transformation tests
+   - Reuse test helpers (`strPtr`, `intPtr`) from `game_models_test.go` (same package)
+
+5. **Acceptance tests** — create for EVERY new resource and data source:
+   - **Resource test** (`internal/provider/{ENTITY_SNAKE}_resource_test.go`):
+     - Follow `game_resource_test.go` pattern
+     - Create parent resources first (game, then set if sub-resource)
+     - Test Create+Verify step with `TestCheckResourceAttr` / `TestCheckResourceAttrSet`
+     - If Update is supported, add an Update step
+     - Use `providerConfig +` prefix for all configs
+   - **Data source test** (`internal/provider/{ENTITY_SNAKE}_data_source_test.go`):
+     - Follow `game_data_source_test.go` pattern
+     - Create the resource, then read it via data source
+     - Use `TestCheckResourceAttrPair` to verify resource↔data source field parity
+
 ## Critical patterns to follow
 - Always re-read after Create/Update to get the server's canonical state
 - Use `stringplanmodifier.UseStateForUnknown()` for Computed immutable fields (id, owner)
@@ -100,6 +124,9 @@ Read these files:
 - internal/provider/{ENTITY_SNAKE}_resource.go
 - internal/provider/{ENTITY_SNAKE}_data_source.go (if exists)
 - internal/provider/{ENTITY_SNAKE}_models.go (if exists)
+- internal/provider/{ENTITY_SNAKE}_models_test.go (if exists)
+- internal/provider/{ENTITY_SNAKE}_resource_test.go (if exists)
+- internal/provider/{ENTITY_SNAKE}_data_source_test.go (if exists)
 - internal/provider/client_generated.go (search for {ENTITY_PASCAL} types and methods)
 - CLAUDE.md (project conventions)
 
@@ -116,6 +143,8 @@ Compare the current implementation against the latest generated types in client_
 - Update model mapper functions to handle new fields
 - If new CRUD endpoints were added (e.g., Update didn't exist before but now does), implement the handler
 - If endpoints were removed, remove the corresponding handler
+- Update unit tests in `{ENTITY_SNAKE}_models_test.go` to cover new/changed mapper fields
+- Update acceptance tests to verify new/changed attributes
 
 Follow the same patterns documented in CLAUDE.md. Do NOT modify provider.go or other entity files.
 ```
@@ -134,3 +163,8 @@ Run `make test`. If compilation fails, read the errors and fix them. Common issu
 - Missing imports (add the appropriate `terraform-plugin-framework` packages)
 - Type mismatches between generated client types and Terraform model fields
 - Unregistered resources in provider.go
+
+All unit tests MUST pass before reporting completion. The test run should show:
+- All new mapper function tests passing
+- All acceptance tests properly skipped (unless `TF_ACC` is set)
+- No compilation errors
