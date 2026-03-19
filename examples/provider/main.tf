@@ -105,9 +105,10 @@ resource "tcg-sandbox_card" "forest" {
 }
 
 resource "tcg-sandbox_card" "mountain" {
-  game_id     = tcg-sandbox_game.terraformed.id
-  name        = "Mountain"
-  description = "Rugged peaks. Gain 8 land area but blocks adjacency."
+  game_id         = tcg-sandbox_game.terraformed.id
+  name            = "Mountain"
+  card_image_path = "${path.root}/assets/game_banner.jpg"
+  description     = "Rugged peaks. Gain 8 land area but blocks adjacency."
   attributes = {
     "land_area_sq_ft" = "800"
     "terrain_type"    = "alpine"
