@@ -1,3 +1,8 @@
+---
+name: sync-provider
+description: Sync the Terraform provider with the latest API changes. Analyze the generated client for new or modified endpoints, then implement missing resources and data sources in parallel. Use this skill when the user runs /sync-provider, asks to sync or update the provider with API changes, or wants to implement missing or changed Terraform resources/data sources.
+---
+
 Sync the Terraform provider with the latest API changes. Analyze the generated client for new or modified endpoints, then implement missing resources and data sources in parallel.
 
 ## 1. Analyze
@@ -14,6 +19,8 @@ Parse the output for two categories of work:
 - **Entries under `MISSING IMPLEMENTATIONS`** — new entities needing resource/data source files
 
 If there are no changes and no missing entities, report "Provider is up to date" and stop.
+
+**Filtering:** Skip entities that only have a `List` operation and no `Get`/`Create`/`Delete` — these are not meaningful Terraform resources or data sources and should be excluded from implementation.
 
 ## 2. Build work items
 
@@ -38,6 +45,9 @@ You are implementing a Terraform provider entity. Read these reference files fir
 - internal/provider/game_resource.go (resource pattern)
 - internal/provider/game_data_source.go (data source pattern)
 - internal/provider/game_models.go (shared models pattern)
+- internal/provider/game_models_test.go (unit test pattern for pure mapper functions)
+- internal/provider/game_resource_test.go (acceptance test pattern for resources)
+- internal/provider/game_data_source_test.go (acceptance test pattern for data sources)
 - CLAUDE.md (project conventions)
 
 Then read the generated client types for your entity from internal/provider/client_generated.go.
@@ -73,12 +83,32 @@ Relevant generated types (verify these by reading client_generated.go):
    - `new{Entity}()` functions (Terraform → API)
    - Use `optionalString()` from game_models.go for nullable string pointers
 
+4. **Unit tests** (`internal/provider/{ENTITY_SNAKE}_models_test.go`) — create for EVERY entity that has a models file with pure mapper functions. Follow the pattern in `game_models_test.go`:
+   - Test each mapper function with: all fields populated, nil/optional fields, edge cases (empty maps, type coercion)
+   - Use `t.Parallel()` on every test
+   - Use simple `Test{FuncName}_{Scenario}` naming
+   - No mocking — these are pure data transformation tests
+   - Reuse test helpers (`strPtr`, `intPtr`) from `game_models_test.go` (same package)
+
+5. **Acceptance tests** — create for EVERY new resource and data source:
+   - **Resource test** (`internal/provider/{ENTITY_SNAKE}_resource_test.go`):
+     - Follow `game_resource_test.go` pattern
+     - Create parent resources first (game, then set if sub-resource)
+     - Test Create+Verify step with `TestCheckResourceAttr` / `TestCheckResourceAttrSet`
+     - If Update is supported, add an Update step
+     - Use `providerConfig +` prefix for all configs
+   - **Data source test** (`internal/provider/{ENTITY_SNAKE}_data_source_test.go`):
+     - Follow `game_data_source_test.go` pattern
+     - Create the resource, then read it via data source
+     - Use `TestCheckResourceAttrPair` to verify resource↔data source field parity
+
 ## Critical patterns to follow
 - Always re-read after Create/Update to get the server's canonical state
 - Use `stringplanmodifier.UseStateForUnknown()` for Computed immutable fields (id, owner)
 - Parse responses with `Parse{Method}Response()` and check `JSON{StatusCode}` (e.g., JSON200, JSON201)
 - Treat nil JSON response as error: `fmt.Sprintf("Unexpected status: %s, body: %s", resp.Status(), string(resp.Body))`
-- For optional pointer fields from the API, use nil checks before setting values
+- For optional `*string` fields from the API: treat BOTH nil AND empty string as null. Do NOT use `optionalString()` — instead use explicit checks: `if ptr != nil && *ptr != "" { types.StringValue(*ptr) } else { types.StringNull() }`. The API returns `""` for unset optional fields, which causes "was null, but now cty.StringVal("")" errors if mapped as-is.
+- For `map[string]interface{}` attribute values sent to the API: attempt numeric conversion with `strconv.ParseFloat` and boolean conversion before sending, since the API validates attribute types against the game schema.
 
 ## Constraints
 - Do NOT modify provider.go — the orchestrator registers new entities
@@ -95,6 +125,9 @@ Read these files:
 - internal/provider/{ENTITY_SNAKE}_resource.go
 - internal/provider/{ENTITY_SNAKE}_data_source.go (if exists)
 - internal/provider/{ENTITY_SNAKE}_models.go (if exists)
+- internal/provider/{ENTITY_SNAKE}_models_test.go (if exists)
+- internal/provider/{ENTITY_SNAKE}_resource_test.go (if exists)
+- internal/provider/{ENTITY_SNAKE}_data_source_test.go (if exists)
 - internal/provider/client_generated.go (search for {ENTITY_PASCAL} types and methods)
 - CLAUDE.md (project conventions)
 
@@ -111,6 +144,8 @@ Compare the current implementation against the latest generated types in client_
 - Update model mapper functions to handle new fields
 - If new CRUD endpoints were added (e.g., Update didn't exist before but now does), implement the handler
 - If endpoints were removed, remove the corresponding handler
+- Update unit tests in `{ENTITY_SNAKE}_models_test.go` to cover new/changed mapper fields
+- Update acceptance tests to verify new/changed attributes
 
 Follow the same patterns documented in CLAUDE.md. Do NOT modify provider.go or other entity files.
 ```
@@ -125,7 +160,11 @@ Skip this step if only existing entities were updated (no new files created).
 
 ## 5. Verify
 
-Run `make test`. If compilation fails, read the errors and fix them. Common issues:
+Run `make testacc` (which runs both unit and acceptance tests against the live API). If compilation fails, read the errors and fix them. Common issues:
 - Missing imports (add the appropriate `terraform-plugin-framework` packages)
 - Type mismatches between generated client types and Terraform model fields
 - Unregistered resources in provider.go
+- "Provider produced inconsistent result after apply" errors — usually caused by optional `*string` fields where the API returns `""` but Terraform expects null (see critical patterns above)
+- Attribute type validation errors — card-like resources need numeric/boolean coercion when sending `map[string]interface{}` attribute values to the API
+
+ALL tests (unit AND acceptance) MUST pass before reporting completion. Do NOT consider the task complete until `make testacc` exits with status 0.

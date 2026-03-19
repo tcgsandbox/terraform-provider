@@ -6,6 +6,10 @@ import (
 
 // Shared model types used by both the game resource and data source.
 
+type gameRulesModel struct {
+	Content types.String `tfsdk:"content"`
+}
+
 type gameOptionsModel struct {
 	CardDisplayMode    types.String `tfsdk:"card_display_mode"`
 	CardDisplayContext types.String `tfsdk:"card_display_context"`

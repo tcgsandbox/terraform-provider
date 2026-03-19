@@ -144,11 +144,15 @@ func (p *TcgSandboxProvider) Configure(ctx context.Context, req provider.Configu
 func (p *TcgSandboxProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		NewGameDataSource,
+		NewCardDataSource,
+		NewLorePostDataSource,
 	}
 }
 
 func (p *TcgSandboxProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewGameResource,
+		NewCardResource,
+		NewLorePostResource,
 	}
 }
