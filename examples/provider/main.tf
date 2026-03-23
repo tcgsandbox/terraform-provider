@@ -6,7 +6,7 @@ terraform {
     # In your real terraform stack:
     #tcg-sandbox = {
     #  source  = "tcgsandbox/tcg-sandbox"
-    #  version = "0.0.1"
+    #  version = "~>0.0.1"
     #}
   }
 }
